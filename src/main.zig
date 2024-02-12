@@ -51,7 +51,7 @@ const EntryList = struct {
 var arena: std.mem.Allocator = undefined;
 
 pub fn main() !void {
-    rl.InitWindow(screen_width, screen_height, "raylib window");
+    rl.InitWindow(screen_width, screen_height, "filetree");
     rl.SetTargetFPS(60);
 
     var arena_inst = std.heap.ArenaAllocator.init(std.heap.page_allocator);
