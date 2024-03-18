@@ -144,9 +144,6 @@ pub fn main() !void {
         }
     }
 
-    // for (list.items) |item|
-    //     std.debug.print("{s}\n", .{item.name});
-
     var anchor = vec2(f32, 50, 50);
     while (!rl.WindowShouldClose()) {
         if (rl.IsKeyDown(rl.KEY_Q)) break;
@@ -166,14 +163,16 @@ pub fn main() !void {
 
         // main render loop
         drawList(list.items, anchor);
+
+        const mouse_pos = rl.GetMousePosition();
         const mouse_left = rl.IsMouseButtonPressed(rl.MOUSE_BUTTON_LEFT);
         if (mouse_left) {
-            const mouse = rl.GetMousePosition();
             path.reset();
-
             var prev_depth: u32 = 0;
             for (buttons.items) |button| {
                 if (list.items[button.id].depth > prev_depth) {
+                    // FIXME: messes up with populating dirs and the buttons
+                    //     try path.append("/");
                     try path.append(list.items[button.id].name);
                     prev_depth = list.items[button.id].depth;
                 } else {
@@ -181,7 +180,7 @@ pub fn main() !void {
                     try path.append(list.items[button.id].name);
                 }
 
-                if (button.checkCollision(mouse)) {
+                if (button.checkCollision(mouse_pos)) {
                     const id = button.id;
                     std.log.info(
                         "id {}, name {s}, depth {}",
@@ -192,6 +191,12 @@ pub fn main() !void {
                         try populateDir(gpa, arena, &list, path.getSlice(), id);
                 }
             }
+        }
+
+        if (rl.IsMouseButtonDown(rl.MOUSE_BUTTON_RIGHT)) {
+            const mouse_delta = rl.GetMouseDelta();
+            anchor.x += mouse_delta.x;
+            anchor.y += mouse_delta.y;
         }
 
         rl.DrawFPS(0, 0);
