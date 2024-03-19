@@ -6,8 +6,8 @@ const Allocator = std.mem.Allocator;
 
 const SCREEN_WIDTH = 800;
 const SCREEN_HEIGHT = 600;
-const FONT_SIZE = 30;
 const SPACING = 5;
+var FONT_SIZE: f32 = 30;
 
 const Node = struct {
     kind: enum { dir, file },
@@ -36,7 +36,6 @@ const Button = struct {
     rect: rl.Rectangle,
 
     fn checkCollision(self: Button, point: rl.Vector2) bool {
-        // std.log.info("mouse coords {}, button coords {}", .{ point, self.rect });
         return rl.CheckCollisionPointRec(point, self.rect);
     }
 };
@@ -153,18 +152,12 @@ pub fn main() !void {
         if (rl.IsKeyDown(rl.KEY_RIGHT)) anchor.x -= 10;
         if (rl.IsKeyPressed(rl.KEY_D)) debugPrint(list.items, path.getSlice());
 
-        rl.BeginDrawing();
-        defer rl.EndDrawing();
-
-        rl.ClearBackground(rl.RAYWHITE);
-
         buttons.clearRetainingCapacity();
         try createButtons(&buttons, list.items, anchor.x, anchor.y);
 
-        // main render loop
-        drawList(list.items, anchor);
-
         const mouse_pos = rl.GetMousePosition();
+
+        // Clicking
         const mouse_left = rl.IsMouseButtonPressed(rl.MOUSE_BUTTON_LEFT);
         if (mouse_left) {
             path.reset();
@@ -180,6 +173,7 @@ pub fn main() !void {
                     try path.append(list.items[button.id].name);
                 }
 
+                // Button clicked
                 if (button.checkCollision(mouse_pos)) {
                     const id = button.id;
                     std.log.info(
@@ -193,11 +187,30 @@ pub fn main() !void {
             }
         }
 
+        // Dragging
         if (rl.IsMouseButtonDown(rl.MOUSE_BUTTON_RIGHT)) {
             const mouse_delta = rl.GetMouseDelta();
             anchor.x += mouse_delta.x;
             anchor.y += mouse_delta.y;
         }
+
+        // Scaling
+        const wheel_scroll = rl.GetMouseWheelMove();
+        if (wheel_scroll != 0.0) {
+            if (rl.IsKeyDown(rl.KEY_LEFT_SHIFT))
+                FONT_SIZE += wheel_scroll * 5
+            else
+                FONT_SIZE += wheel_scroll;
+
+            if (FONT_SIZE < 0.0) FONT_SIZE = 0.0;
+        }
+
+        rl.ClearBackground(rl.RAYWHITE);
+
+        rl.BeginDrawing();
+        defer rl.EndDrawing();
+
+        drawList(list.items, anchor);
 
         rl.DrawFPS(0, 0);
     }
@@ -220,7 +233,7 @@ inline fn createButtons(
             try buttons.append(.{
                 .id = curr_node,
                 .rect = .{
-                    .x = x + @as(f32, @floatFromInt(FONT_SIZE * (curr_depth - 1))),
+                    .x = x + FONT_SIZE * @as(f32, @floatFromInt(curr_depth - 1)),
                     .y = y,
                     .width = FONT_SIZE,
                     .height = FONT_SIZE,
@@ -247,36 +260,36 @@ inline fn drawList(nodes: []const Node, origin: rl.Vector2) void {
         switch (nodes[curr_node].kind) {
             .dir => {
                 drawArrow(
-                    @floatFromInt(x + FONT_SIZE * (curr_depth - 1)),
+                    @as(f32, @floatFromInt(x)) + FONT_SIZE * @as(f32, @floatFromInt(curr_depth - 1)),
                     @floatFromInt(y),
                     FONT_SIZE,
                     nodes[curr_node].open,
                 );
                 rl.DrawText(
                     nodes[curr_node].name,
-                    @intCast(x + FONT_SIZE * curr_depth + SPACING * 2),
+                    @intCast(x + @as(i32, @intFromFloat(FONT_SIZE)) * curr_depth + SPACING * 2),
                     @intCast(y),
-                    FONT_SIZE,
+                    @intFromFloat(FONT_SIZE),
                     rl.DARKBLUE,
                 );
                 if (nodes[curr_node].open)
                     rl.DrawText(
                         "[open]",
-                        @intCast(x + FONT_SIZE * curr_depth + 200),
+                        @intCast(x + @as(i32, @intFromFloat(FONT_SIZE)) * curr_depth + 200),
                         @intCast(y),
-                        FONT_SIZE,
+                        @intFromFloat(FONT_SIZE),
                         rl.DARKBLUE,
                     );
             },
             .file => rl.DrawText(
                 nodes[curr_node].name,
-                @intCast(x + FONT_SIZE * (curr_depth - 1)),
+                @intCast(x + @as(i32, @intFromFloat(FONT_SIZE)) * (curr_depth - 1)),
                 @intCast(y),
-                FONT_SIZE,
+                @intFromFloat(FONT_SIZE),
                 rl.BLACK,
             ),
         }
-        y += FONT_SIZE + SPACING;
+        y += @intFromFloat(FONT_SIZE + SPACING);
         if (!nodes[curr_node].open) {
             curr_node = nodes[curr_node].next;
             // std.debug.print("line 256\n", .{});
