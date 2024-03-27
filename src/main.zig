@@ -45,9 +45,11 @@ const Button = struct {
     }
 };
 
-/// Thin wrapper around ArrayList to handle popping directories.
+// TODO: replace this with a semi-arena that prepends everything, like an
+// arraylist that grows backwards.
+//
+// Thin wrapper around ArrayList to handle popping directories.
 const PathList = struct {
-    last_pop_pos: usize = 0,
     list: std.ArrayList(u8),
 
     fn init(allocator: std.mem.Allocator) PathList {
@@ -62,30 +64,20 @@ const PathList = struct {
         return self.list.items;
     }
 
-    fn pop(self: *PathList) void {
-        self.list.items.len = self.last_pop_pos;
-        var backwards_it = std.mem.reverseIterator(self.list.items);
-        var reverse_index = self.last_pop_pos;
-        while (backwards_it.next()) |val| : (reverse_index -= 1) {
-            if (val == '/') {
-                reverse_index -= 1;
-                break;
-            }
-        }
-        self.last_pop_pos = reverse_index;
+    fn appendDelimiter(self: *PathList) !void {
+        try self.list.append('/');
     }
 
-    fn appendDelimiter(self: *PathList) !void {
-        // NOTE: this is offset by 1, but it should not underflow
-        try self.list.append('/');
-        self.last_pop_pos += 1;
+    fn prependDelimiter(self: *PathList) !void {
+        try self.list.insert(0, '/');
     }
 
     fn append(self: *PathList, str: []const u8) !void {
-        // NOTE: this is offset by 1, but it should not underflow
-        const prev_pos = self.list.items.len -| 1;
         try self.list.appendSlice(str);
-        self.last_pop_pos = prev_pos;
+    }
+
+    fn prepend(self: *PathList, str: []const u8) !void {
+        try self.list.insertSlice(0, str);
     }
 
     fn reset(self: *PathList) void {
@@ -177,23 +169,28 @@ pub fn main() !void {
         const mouse_left = rl.IsMouseButtonPressed(rl.MOUSE_BUTTON_LEFT);
         if (mouse_left) {
             path.reset();
-            var prev_depth: u32 = 0;
             for (buttons.items) |button| {
-                if (list.items[button.id].depth > prev_depth) {
-                    // FIXME: messes up with populating dirs and the buttons
-                    if (path.list.items.len > 0)
-                        try path.appendDelimiter();
-
-                    try path.append(list.items[button.id].name);
-                    prev_depth = list.items[button.id].depth;
-                } else {
-                    path.pop();
-                    try path.append(list.items[button.id].name);
-                }
-
                 // Button clicked
                 if (button.checkCollision(mouse_pos)) {
+                    path.reset();
                     const id = button.id;
+                    var prev_depth = list.items[id].depth;
+
+                    try path.append(list.items[id].name);
+                    // Recreate current path from id
+                    var idx = id;
+                    while (true) : (idx -= 1) {
+                        const curr_depth = list.items[idx].depth;
+                        if (curr_depth < prev_depth) {
+                            try path.prependDelimiter();
+                            try path.prepend(list.items[idx].name);
+                            if (curr_depth == 1) break; // we are at the root
+                            prev_depth = curr_depth;
+                        }
+
+                        if (idx == 0) break;
+                    }
+
                     std.log.info(
                         "id {}, name {s}, depth {}",
                         .{ id, list.items[id].name, list.items[id].depth },
@@ -327,7 +324,7 @@ fn populateDir(
     path: []const u8,
     id: u32,
 ) !void {
-    std.debug.print("path to open: {s}", .{path});
+    std.debug.print("path to open: {s}\n", .{path});
     const parent_dir_depth = if (list.items.len == 0) 0 else list.items[id].depth;
 
     var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
@@ -349,7 +346,6 @@ fn populateDir(
             .file => try file_list.append(name_dup),
             else => std.log.err("filetype not handled", .{}),
         }
-        std.debug.print("info: we got new items, total is now {}\n", .{count + 1});
     }
 
     const new_capacity = list.items.len + count;
