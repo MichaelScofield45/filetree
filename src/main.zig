@@ -9,11 +9,16 @@ const SCREEN_HEIGHT = 600;
 const SPACING = 5;
 var FONT_SIZE: f32 = 30;
 
+const NodeT = union(enum) {
+    dir: void,
+    file: void,
+};
+
 const Node = struct {
     kind: enum { dir, file },
     depth: u32,
     open: bool = false,
-    next: u32 = 0,
+    next: u32 = undefined,
     name: [:0]const u8,
 
     fn openedBefore(self: Node, id: u32) bool {
@@ -59,17 +64,28 @@ const PathList = struct {
 
     fn pop(self: *PathList) void {
         self.list.items.len = self.last_pop_pos;
+        var backwards_it = std.mem.reverseIterator(self.list.items);
+        var reverse_index = self.last_pop_pos;
+        while (backwards_it.next()) |val| : (reverse_index -= 1) {
+            if (val == '/') {
+                reverse_index -= 1;
+                break;
+            }
+        }
+        self.last_pop_pos = reverse_index;
     }
 
-    inline fn len(self: PathList) usize {
-        return self.list.items.len;
+    fn appendDelimiter(self: *PathList) !void {
+        // NOTE: this is offset by 1, but it should not underflow
+        try self.list.append('/');
+        self.last_pop_pos += 1;
     }
 
     fn append(self: *PathList, str: []const u8) !void {
         // NOTE: this is offset by 1, but it should not underflow
-        const prev_len = self.len() -| 1;
+        const prev_pos = self.list.items.len -| 1;
         try self.list.appendSlice(str);
-        self.last_pop_pos = prev_len;
+        self.last_pop_pos = prev_pos;
     }
 
     fn reset(self: *PathList) void {
@@ -165,7 +181,9 @@ pub fn main() !void {
             for (buttons.items) |button| {
                 if (list.items[button.id].depth > prev_depth) {
                     // FIXME: messes up with populating dirs and the buttons
-                    //     try path.append("/");
+                    if (path.list.items.len > 0)
+                        try path.appendDelimiter();
+
                     try path.append(list.items[button.id].name);
                     prev_depth = list.items[button.id].depth;
                 } else {
@@ -190,8 +208,7 @@ pub fn main() !void {
         // Dragging
         if (rl.IsMouseButtonDown(rl.MOUSE_BUTTON_RIGHT)) {
             const mouse_delta = rl.GetMouseDelta();
-            anchor.x += mouse_delta.x;
-            anchor.y += mouse_delta.y;
+            anchor = rl.Vector2Add(anchor, mouse_delta);
         }
 
         // Scaling
@@ -211,6 +228,7 @@ pub fn main() !void {
         defer rl.EndDrawing();
 
         drawList(list.items, anchor);
+        drawButtonsDebug(buttons);
 
         rl.DrawFPS(0, 0);
     }
@@ -248,6 +266,11 @@ inline fn createButtons(
 
         y += FONT_SIZE + SPACING;
     }
+}
+
+inline fn drawButtonsDebug(buttons: std.ArrayList(Button)) void {
+    for (buttons.items) |button|
+        rl.DrawRectangleLinesEx(button.rect, 2, rl.GREEN);
 }
 
 inline fn drawList(nodes: []const Node, origin: rl.Vector2) void {
@@ -290,14 +313,10 @@ inline fn drawList(nodes: []const Node, origin: rl.Vector2) void {
             ),
         }
         y += @intFromFloat(FONT_SIZE + SPACING);
-        if (!nodes[curr_node].open) {
-            curr_node = nodes[curr_node].next;
-            // std.debug.print("line 256\n", .{});
-        } else {
+        if (!nodes[curr_node].open)
+            curr_node = nodes[curr_node].next
+        else
             curr_node += 1;
-            // std.debug.print("line 259\n", .{});
-        }
-        // curr_node += 1;
     }
 }
 
@@ -356,12 +375,23 @@ fn populateDir(
             .depth = parent_dir_depth + 1,
         });
 
-    for (list.items[after_id..][0..count], after_id..) |*item, idx| {
-        if (idx == count)
-            item.next = list.items[after_id].next;
+    // 1. walk backwards until parent found, iterate until all parents are
+    // correctly offset
+    // 2. offset by count
+    var backwards_it = id;
+    var curr_depth = list.items[id].depth;
+    while (list.items[backwards_it].depth > 0) : (backwards_it -= 1) {
+        if (list.items[backwards_it].depth < curr_depth) {
+            curr_depth = list.items[backwards_it].depth;
+            list.items[backwards_it].next += @intCast(count);
+        }
 
-        item.next = @intCast(idx + 1);
+        if (backwards_it == 0) break;
     }
+
+    // Set new items next id to their immediate neighbors
+    for (list.items[after_id..][0..count], after_id..) |*item, idx|
+        item.next = @intCast(idx + 1);
 }
 
 inline fn vec2(comptime T: type, x: T, y: T) rl.Vector2 {

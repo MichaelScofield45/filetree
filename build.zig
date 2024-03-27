@@ -16,7 +16,10 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    exe.linkLibrary(raylib_dep.artifact("raylib"));
+
+    const raylib_artifact = raylib_dep.artifact("raylib");
+    raylib_artifact.defineCMacro("_GLFW_X11", null);
+    exe.linkLibrary(raylib_artifact);
     exe.addIncludePath(raylib_dep.path("."));
 
     b.installArtifact(exe);
