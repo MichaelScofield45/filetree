@@ -47,7 +47,6 @@ const Button = struct {
 
 /// Thin wrapper around ArrayList to handle popping directories.
 const PathList = struct {
-    last_pop_pos: usize = 0,
     list: std.ArrayList(u8),
 
     fn init(allocator: std.mem.Allocator) PathList {
@@ -63,29 +62,24 @@ const PathList = struct {
     }
 
     fn pop(self: *PathList) void {
-        self.list.items.len = self.last_pop_pos;
         var backwards_it = std.mem.reverseIterator(self.list.items);
-        var reverse_index = self.last_pop_pos;
+        var reverse_index = self.list.items.len;
         while (backwards_it.next()) |val| : (reverse_index -= 1) {
             if (val == '/') {
-                reverse_index -= 1;
+                self.list.items.len = reverse_index;
                 break;
             }
         }
-        self.last_pop_pos = reverse_index;
+
+        if (reverse_index == 0) self.list.items.len = reverse_index;
     }
 
     fn appendDelimiter(self: *PathList) !void {
-        // NOTE: this is offset by 1, but it should not underflow
         try self.list.append('/');
-        self.last_pop_pos += 1;
     }
 
     fn append(self: *PathList, str: []const u8) !void {
-        // NOTE: this is offset by 1, but it should not underflow
-        const prev_pos = self.list.items.len -| 1;
         try self.list.appendSlice(str);
-        self.last_pop_pos = prev_pos;
     }
 
     fn reset(self: *PathList) void {
@@ -180,7 +174,6 @@ pub fn main() !void {
             var prev_depth: u32 = 0;
             for (buttons.items) |button| {
                 if (list.items[button.id].depth > prev_depth) {
-                    // FIXME: messes up with populating dirs and the buttons
                     if (path.list.items.len > 0)
                         try path.appendDelimiter();
 
@@ -327,7 +320,7 @@ fn populateDir(
     path: []const u8,
     id: u32,
 ) !void {
-    std.debug.print("path to open: {s}", .{path});
+    std.debug.print("path to open: {s}\n", .{path});
     const parent_dir_depth = if (list.items.len == 0) 0 else list.items[id].depth;
 
     var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
@@ -349,7 +342,6 @@ fn populateDir(
             .file => try file_list.append(name_dup),
             else => std.log.err("filetype not handled", .{}),
         }
-        std.debug.print("info: we got new items, total is now {}\n", .{count + 1});
     }
 
     const new_capacity = list.items.len + count;
