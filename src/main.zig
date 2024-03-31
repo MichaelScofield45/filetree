@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const rl = @import("c.zig");
 const Entry = std.fs.Dir.Entry;
@@ -167,43 +168,46 @@ pub fn main() !void {
 
         // Clicking
         const mouse_left = rl.IsMouseButtonPressed(rl.MOUSE_BUTTON_LEFT);
-        if (mouse_left) {
-            path.reset();
-            for (buttons.items) |button| {
-                // Button clicked
-                if (button.checkCollision(mouse_pos)) {
-                    path.reset();
-                    const id = button.id;
-                    var prev_depth = list.items[id].depth;
+        for (buttons.items) |button| {
+            if (button.checkCollision(mouse_pos)) {
+                rl.SetMouseCursor(rl.MOUSE_CURSOR_POINTING_HAND);
+                if (!mouse_left) break;
 
-                    try path.append(list.items[id].name);
-                    // Recreate current path from id
-                    var idx = id;
-                    while (true) : (idx -= 1) {
-                        const curr_depth = list.items[idx].depth;
-                        if (curr_depth < prev_depth) {
-                            try path.prependDelimiter();
-                            try path.prepend(list.items[idx].name);
-                            if (curr_depth == 1) break; // we are at the root
-                            prev_depth = curr_depth;
-                        }
+                // Button was clicked
+                path.reset();
+                const id = button.id;
+                var prev_depth = list.items[id].depth;
 
-                        if (idx == 0) break;
+                try path.append(list.items[id].name);
+                // Recreate current path from id
+                var idx = id;
+                while (true) : (idx -= 1) {
+                    const curr_depth = list.items[idx].depth;
+                    if (curr_depth < prev_depth) {
+                        try path.prependDelimiter();
+                        try path.prepend(list.items[idx].name);
+                        if (curr_depth == 1) break; // we are at the root
+                        prev_depth = curr_depth;
                     }
 
-                    std.log.info(
-                        "id {}, name {s}, depth {}",
-                        .{ id, list.items[id].name, list.items[id].depth },
-                    );
-                    list.items[id].open = !list.items[id].open;
-                    if (list.items[id].open and !list.items[id].openedBefore(id))
-                        try populateDir(gpa, arena, &list, path.getSlice(), id);
+                    if (idx == 0) break;
                 }
+
+                std.log.info(
+                    "id {}, name {s}, depth {}",
+                    .{ id, list.items[id].name, list.items[id].depth },
+                );
+                list.items[id].open = !list.items[id].open;
+                if (list.items[id].open and !list.items[id].openedBefore(id))
+                    try populateDir(gpa, arena, &list, path.getSlice(), id);
+            } else {
+                rl.SetMouseCursor(rl.MOUSE_CURSOR_DEFAULT);
             }
         }
 
         // Dragging
         if (rl.IsMouseButtonDown(rl.MOUSE_BUTTON_RIGHT)) {
+            rl.SetMouseCursor(rl.MOUSE_CURSOR_RESIZE_ALL);
             const mouse_delta = rl.GetMouseDelta();
             anchor = rl.Vector2Add(anchor, mouse_delta);
         }
@@ -225,7 +229,8 @@ pub fn main() !void {
         defer rl.EndDrawing();
 
         drawList(list.items, anchor);
-        drawButtonsDebug(buttons);
+        if (builtin.mode == .Debug)
+            drawButtonsDebug(buttons);
 
         rl.DrawFPS(0, 0);
     }
